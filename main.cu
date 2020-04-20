@@ -22,14 +22,17 @@ int main(int argc, char *argv[])
         {
             /*
                 parse arguments 
+                img grid_size threshold
             */
 
             /*
-                call kernal functions 
+                call kernal functions
+
+                kernal: transform colorspace -> compute CDF -> transform colorspace back
             */
 
             /*
-                display result. 
+                out impage
             */
             
         }
