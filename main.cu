@@ -20,9 +20,13 @@ int main(int argc, char *argv[])
     {
         try
         {
+            
             /*
+                grid size 8x8
+                hyperparemeter 100
+                
                 parse arguments 
-                img grid_size threshold
+                img threshold
             */
 
             /*
