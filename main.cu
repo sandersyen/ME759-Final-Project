@@ -20,11 +20,11 @@ int main(int argc, char *argv[])
     {
         try
         {
-            
+            const int grid_size = 64; // 8 * 8
+            const int hyperparemeter = 100; // for histogram
             /*
-                grid size 8x8
-                hyperparemeter 100
-                
+            
+
                 parse arguments 
                 img threshold
             */
