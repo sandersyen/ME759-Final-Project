@@ -72,8 +72,6 @@ __host__ void test_run(){
     cudaFree(dL); cudaFree(dA); cudaFree(dB); cudaFree(dImg);
 }
 
-}
-
 __host__ void test_transform() {
     int width, height, channel;
 
