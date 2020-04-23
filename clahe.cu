@@ -44,44 +44,39 @@ __global__ void transformRgbToLab(unsigned char* pixels, int width, int height, 
 
 __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, float* L, float* A, float* B)
 {
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    // Reference: https://stackoverflow.com/questions/7880264/convert-lab-color-to-rgb
+
+    // pixels: length = width * height * 3
+    // L: length = width * height
+    // A: length = width * height
+    // B: length = width * height
+    int i = (threadIdx.x + blockDim.x * blockIdx.x);
+
     if (i < width * height)
     {
-        float y = (L[i] + 16) / 116;
-        float x = (A[i]) / 500 + y;
-        float z = y - B[i] / 200;
+        float y = (L[i] + 16. ) / 116.;
+        float x = A[i] / 500. + y;
+        float z = y - B[i] / 200.;
 
-        x = 0.95047 * ((x * x * x > 0.008856) ? x * x * x : (x - 16/116) / 7.787);
-        y = 1.00000 * ((y * y * y > 0.008856) ? y * y * y : (y - 16/116) / 7.787);
-        z = 1.08883 * ((z * z * z > 0.008856) ? z * z * z : (z - 16/116) / 7.787);
+        y = (pow(y, 3) > 0.008856) ? pow(y, 3) : (y - 16. / 116.) / 7.787;                      
+        x = (pow(x, 3) > 0.008856) ? pow(x, 3) : (x - 16. / 116.) / 7.787;
+        z = (pow(z,3) > 0.008856) ? pow(z,3) : (z - 16. / 116.) / 7.787;
 
-        float r = x *  3.2406 + y * -1.5372 + z * -0.4986;
-        float g = x * -0.9689 + y *  1.8758 + z *  0.0415;
-        float b = x *  0.0557 + y * -0.2040 + z *  1.0570;
+        x = 95.047 * x / 100.;
+        y = 100.000 * y / 100.;
+        z = 108.883 * z / 100.;
 
-        r = (r > 0.0031308) ? (1.055 * std::pow(r, 1/2.4) - 0.055) : 12.92 * r;
-        g = (g > 0.0031308) ? (1.055 * std::pow(g, 1/2.4) - 0.055) : 12.92 * g;
-        b = (b > 0.0031308) ? (1.055 * std::pow(b, 1/2.4) - 0.055) : 12.92 * b;
+        float r = x * 3.2406 + y * -1.5372 + z * -0.4986;
+        float g = x * -0.9689 + y * 1.8758 + z * 0.0415;
+        float b = x * 0.0557 + y * -0.2040 + z * 1.0570;
 
-        r = (r > 1.0)? 1.0 : r;
-        r = (r < 0.0)? 0.0 : r;
-        r = r * 255;
-
-        g = (g > 1.0)? 1.0 : g;
-        g = (g < 0.0)? 0.0 : g;
-        g = g * 255;
-
-        b = (b > 1.0)? 1.0 : b;
-        b = (b < 0.0)? 0.0 : b;
-        b = b * 255;
-
-        r = (int) r;
-        g = (int) g;
-        b = (int) b;
-
-        pixels[3*i] = (unsigned char)r;
-        pixels[3*i+1] = (unsigned char)g;
-        pixels[3*i+2] = (unsigned char)b;
+        r = (r > 0.0031308) ? 1.055 * pow(r , (1 / 2.4)) - 0.055 : 12.92 * r;
+        g = (g > 0.0031308) ? 1.055 * pow(g , (1 / 2.4)) - 0.055 : 12.92 * g;
+        b = (b > 0.0031308) ? 1.055 * pow( b , (1 / 2.4)) - 0.055 : 12.92 * b;
+        
+        pixels[3 * i] = (char)(r * 255.);
+        pixels[3 * i + 1] = (char)(g * 255.);
+        pixels[3 * i + 2] = (char)(b * 255.);
     }
 }
 
