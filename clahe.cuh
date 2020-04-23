@@ -3,14 +3,16 @@
 
 __global__ void clahe(); // <<<64, 1024>>>
 
-__device__ void transformRgbToLab();
+__global__ void transformRgbToLab(unsigned char* pixels, int width, int height, float* L, float* A, float* B);
 
-__device__ void transformLabToRgb();
+__global__ void transformLabToRgb(unsigned char* pixels, int width, int height, float* L, float* A, float* B);
 
-__device__ void computeHistgram();
+__global__ void computeHistogram(float* L, int width, int height, int* bins);
 
-__device__ void generateCdf();
+__global__ void clipHistogram(int* bins, int threshold);
 
-__device__ void mappingCdf(); // average neighbor -> mapping
+__global__ void generateCdf(int* bins, float* cdf);
+
+__global__ void mappingCdf(float* L, float* cdf); // average neighbor -> mapping
 
 #endif
