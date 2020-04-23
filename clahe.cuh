@@ -13,6 +13,6 @@ __global__ void clipHistogram(int* bins, int threshold);
 
 __global__ void generateCdf(int* bins, float* cdf);
 
-__global__ void mappingCdf(float* L, float* cdf); // average neighbor -> mapping
+__global__ void mappingCdf(float* L, int width, int height, float* cdf); // average neighbor -> mapping
 
 #endif

@@ -80,11 +80,27 @@ __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, 
     }
 }
 
+// int block_dim = 32;
+// dim3 dimBlock(block_dim, block_dim);
+// dim3 dimGrid((width + dimBlock.x - 1)/dimBlock.x, (height+dimBlock.y -1)/dimBlock.y );
+// kernel<<<dimGrid, dimBlock>>>();
+
+// int block_size = blockDim.x;
+// int row = threadIdx.y + blockIdx.y * block_size;
+// int col = threadIdx.x + blockIdx.x * block_size;
+// int i = row * width + col;
+
+// called by kernel<<<dimGrid, dimBlock>>>()
 __global__ void computeHistogram(float* L, int width, int height, int* bins)
 {
     // L: length = width * height
     // bins: length = BIN_SIZE
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    // int i = threadIdx.x + blockDim.x * blockIdx.x;
+    int block_size = blockDim.x;
+    int row = threadIdx.y + blockIdx.y * block_size;
+    int col = threadIdx.x + blockIdx.x * block_size;
+    int i = row * width + col;
+
     if (i < width * height)
     {
         int c = (int)L[i];
@@ -92,10 +108,12 @@ __global__ void computeHistogram(float* L, int width, int height, int* bins)
     }
 }
 
+// called by kernel<<<dimGrid, dimBlock>>>()
 __global__ void clipHistogram(int* bins, int threshold)
 {
     __shared__ int count_overlimit;
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    // int i = threadIdx.x + blockDim.x * blockIdx.x;
+    int i = threadIdx.x + threadIdx.y * blockDim.x;
 
     if(i == 0) count_overlimit=0;
     __syncthreads();
@@ -112,9 +130,11 @@ __global__ void clipHistogram(int* bins, int threshold)
     if(i < BIN_SIZE) bins[i] = bins[i] + count_overlimit/BIN_SIZE + (i < count_overlimit%BIN_SIZE);
 }
 
+// called by kernel<<<dimGrid, dimBlock>>>()
 __global__ void generateCdf(int* bins, float* cdf)
 {
-    int i = threadIdx.x;
+    // int i = threadIdx.x;
+    int i = threadIdx.x + threadIdx.y * blockDim.x;
     // small array so here use sequential scan
     if(i==0){
         for(int j = 1; j < BIN_SIZE; j++)
@@ -126,9 +146,14 @@ __global__ void generateCdf(int* bins, float* cdf)
         cdf[i] = (float)bins[i]/(float)bins[BIN_SIZE-1];
 }
 
-__global__ void mappingCdf(float* L, float* cdf)
+__global__ void mappingCdf(float* L, int width, int height, float* cdf)
 {
-    int i = threadIdx.x + blockDim.x * blockIdx.x;
+    // int i = threadIdx.x + blockDim.x * blockIdx.x;
+    int block_size = blockDim.x;
+    int row = threadIdx.y + blockIdx.y * block_size;
+    int col = threadIdx.x + blockIdx.x * block_size;
+    int i = row * width + col;
+
     // average neighbor -> mapping
     int index = (int)L[i];
     L[i] = cdf[index] * 100;
