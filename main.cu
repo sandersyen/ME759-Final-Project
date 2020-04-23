@@ -227,7 +227,7 @@ __host__ void test_func() {
     }
 
     // test mappingCdf
-    mappingCdf<<<1, threads_per_block>>>(dL, dC);
+    mappingCdf<<<1, threads_per_block>>>(dL, width, height, dC);
     cudaMemcpy(out, dB, BIN_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
 
     float* Lout = new float[width*height];
