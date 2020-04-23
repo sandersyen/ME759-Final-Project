@@ -74,9 +74,9 @@ __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, 
         g = (g > 0.0031308) ? 1.055 * pow(g , (1 / 2.4)) - 0.055 : 12.92 * g;
         b = (b > 0.0031308) ? 1.055 * pow( b , (1 / 2.4)) - 0.055 : 12.92 * b;
         
-        pixels[3 * i] = (char)(r * 255.);
-        pixels[3 * i + 1] = (char)(g * 255.);
-        pixels[3 * i + 2] = (char)(b * 255.);
+        pixels[3 * i] = (unsigned char)(r * 255.);
+        pixels[3 * i + 1] = (unsigned char)(g * 255.);
+        pixels[3 * i + 2] = (unsigned char)(b * 255.);
     }
 }
 
