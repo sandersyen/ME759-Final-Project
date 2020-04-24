@@ -123,7 +123,7 @@ __device__ void clipHistogram(int* bins, int threshold)
 {
     __shared__ int count_overlimit;
     // int i = threadIdx.x + blockDim.x * blockIdx.x;
-    int i = threadIdx.x + threadIdx.y * blockDim.x;
+    int i = threadIdx.x + threadIdx.y;
 
     if(i == 0) count_overlimit=0;
     __syncthreads();
@@ -144,9 +144,9 @@ __device__ void clipHistogram(int* bins, int threshold)
 __device__ void generateCdf(int* bins, float* cdf)
 {
     // int i = threadIdx.x;
-    int i = threadIdx.x + threadIdx.y * blockDim.x;
+    int i = threadIdx.x + threadIdx.y;
     // small array so here use sequential scan
-    if(i==0){
+    if(i == 0){
         for(int j = 1; j < BIN_SIZE; j++)
             bins[j]= bins[j]+bins[j-1];
     }
@@ -163,11 +163,42 @@ __device__ void mappingCdf(float* L, int width, int height, float* cdf)
     int row = threadIdx.y + blockIdx.y * block_size;
     int col = threadIdx.x + blockIdx.x * block_size;
     int i = row * width + col;
+    int max = width * height;
 
     // average neighbor -> mapping
-    if(i < width * height){
+    if(i < max){
+
         int index = (int)L[i];
-        L[i] = cdf[index] * 100;
+        int counter = 1;
+        if ((threadIdx.y) != 0)
+        {
+            index += (int)L[i - width];
+            ++counter;
+        }
+
+        if ((threadIdx.y + 1) < block_size && i + width < max)
+        {
+            index += (int)L[i + width];
+            ++counter;
+        }
+
+        if ((threadIdx.x) != 0)
+        {
+            index += (int)L[i - 1];
+            ++counter;
+        }
+
+        if ((threadIdx.x + 1) < block_size && i + 1 < max)
+        {
+            index += (int)L[i + 1];
+            ++counter;
+        }
+        
+        // int index = (int)L[i];
+        float temp = cdf[index / counter] * 100;
+        __syncthreads();
+
+        L[i] = temp;
     }
 }
 
