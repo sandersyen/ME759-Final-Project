@@ -37,9 +37,9 @@ __global__ void transformRgbToLab(unsigned char* pixels, int width, int height, 
         b = (b > 0.04045) ? std::pow((b + 0.055) / 1.055, 2.4) : b / 12.92; b *= 100;
 
         // reference standard sRGB
-        float x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 94.811;
-        float y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 100.000;
-        float z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 107.304;
+        float x = (r * 0.412453 + g * 0.357580 + b * 0.180423) / 95.047;
+        float y = (r * 0.212671 + g * 0.715160 + b * 0.072169) / 100.;
+        float z = (r * 0.019334 + g * 0.119193 + b * 0.950227) / 108.883;
 
         x = (x > 0.008856)? std::pow(x, 0.3333) : (7.787 * x) + 0.137931;
         y = (y > 0.008856)? std::pow(y, 0.3333) : (7.787 * y) + 0.137931;
@@ -67,6 +67,7 @@ __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, 
         float y = (L[i] + 16. ) / 116.;
         float x = A[i] / 500. + y;
         float z = y - B[i] / 200.;
+        z = (z > 0.0) ? z : 0.0;
 
         y = (pow(y, 3) > 0.008856) ? pow(y, 3) : (y - 16. / 116.) / 7.787;                      
         x = (pow(x, 3) > 0.008856) ? pow(x, 3) : (x - 16. / 116.) / 7.787;
@@ -83,32 +84,25 @@ __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, 
         r = (r > 0.0031308) ? 1.055 * pow(r , (1 / 2.4)) - 0.055 : 12.92 * r;
         g = (g > 0.0031308) ? 1.055 * pow(g , (1 / 2.4)) - 0.055 : 12.92 * g;
         b = (b > 0.0031308) ? 1.055 * pow( b , (1 / 2.4)) - 0.055 : 12.92 * b;
+
+        r = (r > 1) ? 1 : r; r = (r > 0) ? r : 0;
+        g = (g > 1) ? 1 : g; g = (g > 0) ? g : 0;
+        b = (b > 1) ? 1 : b; b = (b > 0) ? b : 0;
         
-        pixels[3 * i] = (char)(r * 255.);
-        pixels[3 * i + 1] = (char)(g * 255.);
-        pixels[3 * i + 2] = (char)(b * 255.);
+        pixels[3 * i] = (unsigned char)(r * 255.);
+        pixels[3 * i + 1] = (unsigned char)(g * 255.);
+        pixels[3 * i + 2] = (unsigned char)(b * 255.);
     }
 }
-
-// int block_dim = 32;
-// dim3 dimBlock(block_dim, block_dim);
-// dim3 dimGrid((width + dimBlock.x - 1)/dimBlock.x, (height+dimBlock.y -1)/dimBlock.y );
-// kernel<<<dimGrid, dimBlock>>>();
-
-// int block_size = blockDim.x;
-// int row = threadIdx.y + blockIdx.y * block_size;
-// int col = threadIdx.x + blockIdx.x * block_size;
-// int i = row * width + col;
 
 // called by kernel<<<dimGrid, dimBlock>>>()
 __device__ void computeHistogram(float* L, int width, int height, int* bins)
 {
     // L: length = width * height
     // bins: length = BIN_SIZE
-    // int i = threadIdx.x + blockDim.x * blockIdx.x;
-    int block_size = blockDim.x;
-    int row = threadIdx.y + blockIdx.y * block_size;
-    int col = threadIdx.x + blockIdx.x * block_size;
+
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    int col = threadIdx.x + blockIdx.x * blockDim.x;
     int i = row * width + col;
 
     if (i < width * height)
@@ -122,7 +116,7 @@ __device__ void computeHistogram(float* L, int width, int height, int* bins)
 __device__ void clipHistogram(int* bins, int threshold)
 {
     __shared__ int count_overlimit;
-    // int i = threadIdx.x + blockDim.x * blockIdx.x;
+
     int i = threadIdx.x + threadIdx.y * blockDim.x;
 
     if(i == 0) count_overlimit=0;
@@ -137,14 +131,17 @@ __device__ void clipHistogram(int* bins, int threshold)
         }
     }
     __syncthreads();
-    if(i < BIN_SIZE) bins[i] = bins[i] + count_overlimit/BIN_SIZE + (i < count_overlimit%BIN_SIZE);
+
+    if(i < BIN_SIZE)
+        bins[i] = bins[i] + count_overlimit/BIN_SIZE + (i < count_overlimit%BIN_SIZE);
+    __syncthreads();
 }
 
 // called by kernel<<<dimGrid, dimBlock>>>()
 __device__ void generateCdf(int* bins, float* cdf)
 {
-    // int i = threadIdx.x;
     int i = threadIdx.x + threadIdx.y * blockDim.x;
+
     // small array so here use sequential scan
     if(i==0){
         for(int j = 1; j < BIN_SIZE; j++)
@@ -154,14 +151,13 @@ __device__ void generateCdf(int* bins, float* cdf)
     
     if( i < BIN_SIZE )
         cdf[i] = (float)bins[i]/(float)bins[BIN_SIZE-1];
+    __syncthreads();
 }
 
 __device__ void mappingCdf(float* L, int width, int height, float* cdf)
 {
-    // int i = threadIdx.x + blockDim.x * blockIdx.x;
-    int block_size = blockDim.x;
-    int row = threadIdx.y + blockIdx.y * block_size;
-    int col = threadIdx.x + blockIdx.x * block_size;
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    int col = threadIdx.x + blockIdx.x * blockDim.x;
     int i = row * width + col;
 
     // average neighbor -> mapping
@@ -169,5 +165,6 @@ __device__ void mappingCdf(float* L, int width, int height, float* cdf)
         int index = (int)L[i];
         L[i] = cdf[index] * 100;
     }
+    __syncthreads();
 }
 
