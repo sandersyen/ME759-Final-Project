@@ -123,7 +123,7 @@ __device__ void clipHistogram(int* bins, int threshold)
 {
     __shared__ int count_overlimit;
     // int i = threadIdx.x + blockDim.x * blockIdx.x;
-    int i = threadIdx.x + threadIdx.y;
+    int i = threadIdx.x + threadIdx.y * blockDim.x;
 
     if(i == 0) count_overlimit=0;
     __syncthreads();
@@ -144,7 +144,7 @@ __device__ void clipHistogram(int* bins, int threshold)
 __device__ void generateCdf(int* bins, float* cdf)
 {
     // int i = threadIdx.x;
-    int i = threadIdx.x + threadIdx.y;
+    int i = threadIdx.x + threadIdx.y * blockDim.x;
     // small array so here use sequential scan
     if(i == 0){
         for(int j = 1; j < BIN_SIZE; j++)
