@@ -15,7 +15,7 @@
 using namespace std;
 
 __host__ void test_run(){
-    int threshold = 50;
+    int threshold = 10;
     int width, height, channel;
     unsigned char* rgb_image = stbi_load("tsukuba_L.png", &width, &height, &channel, 3); // 3 means RGB
     int N = width * height;
@@ -43,18 +43,6 @@ __host__ void test_run(){
     transformRgbToLab<<<num_block, threads_per_block>>>(dImg, width, height, dL, dA, dB);
     cudaDeviceSynchronize();
 
-    // cudaMemcpy(dB, bins, BIN_SIZE * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(L, dL, N * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(A, dA, N * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(B, dB, N * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-
-    for(int i = 0; i < 3; i++)
-        cout << L[i] << "," << A[i] << "," << B[i] << "\n";
-        
-    for(int i = 0; i < 3; i++)
-        cout << L[N-i-1] << "," << A[N-i-1] << "," << B[N-i-1] << "\n";
-
     int block_dim = 32;
     dim3 dimBlock(block_dim, block_dim);
     dim3 dimGrid((width + dimBlock.x - 1)/dimBlock.x, (height+dimBlock.y -1)/dimBlock.y );
@@ -64,27 +52,11 @@ __host__ void test_run(){
     cudaMemcpy(L, dL, N * sizeof(float), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
 
-    for(int i = 0; i < 3; i++)
-        cout << L[i] << "," << A[i] << "," << B[i] << "\n";
-        
-    for(int i = 0; i < 3; i++)
-        cout << L[N-i-1] << "," << A[N-i-1] << "," << B[N-i-1] << "\n";
-
-    for(int i = 0; i < N; i++){
-        if(L[i] < 0) cout << "L["<< i << "]<0\n";
-        if(L[i] > 100) cout << "L["<< i << "]>100\n";
-    }
-
     transformLabToRgb<<<num_block, threads_per_block>>>(dImg, width, height, dL, dA, dB);
     cudaDeviceSynchronize();
 
-    // cudaMemcpy(dB, bins, BIN_SIZE * sizeof(int), cudaMemcpyHostToDevice);
-    // cudaMemcpy(L, dL, N * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(A, dA, N * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(B, dB, N * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaDeviceSynchronize();
-
     cudaMemcpy(rgb_image, dImg, N*channel*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
     stbi_write_png("image2.png", width, height, channel, rgb_image, width*3);
 
