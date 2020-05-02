@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
             int threshold = stol(argv[4]);
             
             int width, height, channel;
-            unsigned char* rgb_image = stbi_load(inputImg, &width, &height, &channel, 3); // 3 means RGB
+            unsigned char* rgb_image = stbi_load(inputImg.c_str(), &width, &height, &channel, 3); // 3 means RGB
             int N = width * height;
             int threads_per_block = grid_size * grid_size;
             int num_block = ((width + grid_size - 1) / grid_size) * ((height + grid_size - 1) / grid_size);
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
             cudaMemcpy(rgb_image, dImg, N*channel*sizeof(unsigned char), cudaMemcpyDeviceToHost);
             cudaDeviceSynchronize();
 
-            stbi_write_png(outputImg, width, height, channel, rgb_image, width*3);
+            stbi_write_png(outputImg.c_str(), width, height, channel, rgb_image, width*3);
 
             stbi_image_free(rgb_image);
 

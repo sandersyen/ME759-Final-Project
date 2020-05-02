@@ -9,4 +9,4 @@
 module purge
 module load cuda
 nvcc main2.cu clahe2.cu -Xcompiler -O3 -Xcompiler -Wall -Xptxas -O3 -o clahe2
-./clahe2
+./clahe2 zelda.png zelda_clahe.png 32 10
