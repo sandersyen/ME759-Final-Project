@@ -7,11 +7,12 @@
 __global__ void clahe(float* L, int width, int height, int threshold, float* dCdf)
 {
     __shared__ int bins[BIN_SIZE];
-    __shared__ float cdf[BIN_SIZE];
+    // __shared__ float cdf[BIN_SIZE];
 
     computeHistogram(L, width, height, bins);
     clipHistogram(bins, threshold);
-    generateCdf(bins, cdf, dCdf);
+    // generateCdf(bins, cdf, dCdf);
+    generateCdf(bins, dCdf);
     // mappingCdf(L, width, height, cdf, dCdf);
 
 } // <<<64, 1024>>>
@@ -138,7 +139,8 @@ __device__ void clipHistogram(int* bins, int threshold)
 }
 
 // called by kernel<<<dimGrid, dimBlock>>>()
-__device__ void generateCdf(int* bins, float* cdf, float* dCdf)
+// __device__ void generateCdf(int* bins, float* cdf, float* dCdf)
+__device__ void generateCdf(int* bins, float* dCdf)
 {
     int i = threadIdx.x + threadIdx.y * blockDim.x;
 
@@ -152,8 +154,8 @@ __device__ void generateCdf(int* bins, float* cdf, float* dCdf)
     
     if ( i < BIN_SIZE )
     {
-        cdf[i] = (float)bins[i]/(float)bins[BIN_SIZE - 1];
-        dCdf[(blockIdx.x + blockIdx.y * gridDim.x) * BIN_SIZE + i] = cdf[i];
+        // cdf[i] = (float)bins[i]/(float)bins[BIN_SIZE - 1];
+        dCdf[(blockIdx.x + blockIdx.y * gridDim.x) * BIN_SIZE + i] = (float)bins[i]/(float)bins[BIN_SIZE - 1];
     }
     __syncthreads();
 }
@@ -209,134 +211,78 @@ __device__ void generateCdf(int* bins, float* cdf, float* dCdf)
 
 __global__ void pixelInterpolate(float* L, int width, int height, float* dCdf)
 {
+    __shared__ float topLeft[BIN_SIZE];
+    __shared__ float topRight[BIN_SIZE];
+    __shared__ float bottomLeft[BIN_SIZE];
+    __shared__ float bottomRight[BIN_SIZE];
+
     int row = threadIdx.y + blockIdx.y * blockDim.y;
     int col = threadIdx.x + blockIdx.x * blockDim.x;
     int i = row * width + col;
     // int halfBlockDim = blockDim.x / 2;
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int blockCdf = blockId * BIN_SIZE;
+    int threadI = threadIdx.x + threadIdx.y * blockDim.x;
 
     if (i < width * height)
     {   
         int index = (int)L[i];
         float temp = dCdf[index + blockCdf] * 100;
 
+        if (threadI < BIN_SIZE)
+        {
+            topLeft[threadI] = dCdf[blockCdf + threadI];
+        }
+        __syncthreads();
+
         if (blockIdx.x != gridDim.x - 1 && blockIdx.y != gridDim.y - 1)
         {
-            temp = (blockDim.x - threadIdx.x) * (blockDim.y - threadIdx.y) * dCdf[index + blockCdf]
-                    + threadIdx.x * (blockDim.y - threadIdx.y) * dCdf[index + blockCdf + BIN_SIZE]
-                    + (blockDim.x - threadIdx.x) * threadIdx.y * dCdf[index + blockCdf + gridDim.x * BIN_SIZE]
-                    + threadIdx.x * threadIdx.y * dCdf[index + blockCdf + gridDim.x * BIN_SIZE + BIN_SIZE];
+            if (threadI < BIN_SIZE)
+            {
+                topRight[threadI] = dCdf[blockCdf + BIN_SIZE + threadI];
+                bottomLeft[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + threadI];
+                bottomRight[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + BIN_SIZE + threadI];
+            }
+            __syncthreads();
+            
+            temp = (blockDim.x - threadIdx.x) * (blockDim.y - threadIdx.y) * topLeft[index]
+                    + threadIdx.x * (blockDim.y - threadIdx.y) * topRight[index]
+                    + (blockDim.x - threadIdx.x) * threadIdx.y * bottomLeft[index]
+                    + threadIdx.x * threadIdx.y * bottomRight[index];
 
             L[i] = (temp / (blockDim.x * blockDim.y)) * 100;
         }
         else if (blockIdx.x == gridDim.x - 1 && blockIdx.y != gridDim.y - 1)
         {
-            temp = (blockDim.y - threadIdx.y) * dCdf[index + blockCdf]
-                    + threadIdx.y * dCdf[index + blockCdf + gridDim.x * BIN_SIZE];
+            if (threadI < BIN_SIZE)
+            {
+                bottomLeft[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + threadI];
+            }
+            __syncthreads();
+
+            temp = (blockDim.y - threadIdx.y) * topLeft[index]
+                    + threadIdx.y * bottomLeft[index];
             
             L[i] = (temp / blockDim.y) * 100;
         }
         else if (blockIdx.x != gridDim.x - 1 && blockIdx.y == gridDim.y - 1)
         {
-            temp = (blockDim.x - threadIdx.x) * dCdf[index + blockCdf]
-                    + threadIdx.x * dCdf[index + blockCdf + BIN_SIZE];
+            if (threadI < BIN_SIZE)
+            {
+                topRight[threadI] = dCdf[blockCdf + BIN_SIZE + threadI];
+            }
+            __syncthreads();
+
+            temp = (blockDim.x - threadIdx.x) * topLeft[index]
+                    + threadIdx.x * topRight[index];
 
             L[i] = (temp / blockDim.x) * 100;
         }
         else
         {
-            temp = dCdf[index + blockCdf];
+            temp = topLeft[index];
             L[i] = temp * 100;
         }
     }
     __syncthreads();
 }
-
-// __global__ void pixelInterpolate(float* L, int width, int height, float* dCenterCdf)
-// {
-//     int row = threadIdx.y + blockIdx.y * blockDim.y;
-//     int col = threadIdx.x + blockIdx.x * blockDim.x;
-//     int i = row * width + col;
-//     int halfBlockDim = blockDim.x / 2;
-//     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
-
-//     if (i < width * height)
-//     {
-//         if (row < halfBlockDim || row >= blockDim.y * gridDim.y - halfBlockDim - 1)
-//         {
-//             if (col > halfBlockDim && col < blockDim.x * gridDim.x - halfBlockDim - 1)
-//             {
-//                 if (threadIdx.x > halfBlockDim)
-//                 {
-//                     L[i] = ((blockDim.x - threadIdx.x + halfBlockDim) * dCenterCdf[blockId] 
-//                             +(threadIdx.x - halfBlockDim) * dCenterCdf[blockId + 1]) / blockDim.x;
-//                 }
-//                 else
-//                 {
-//                     L[i] = ((halfBlockDim - threadIdx.x) * dCenterCdf[blockId - 1] 
-//                             +(blockDim.x + threadIdx.x - halfBlockDim) * dCenterCdf[blockId]) / blockDim.x;
-//                 }
-//             }
-//         }
-//         else
-//         {
-//             if (col <= halfBlockDim || col >= blockDim.x * gridDim.x - halfBlockDim - 1)
-//             {
-//                 if (threadIdx.y > halfBlockDim)
-//                 {
-//                     L[i] = ((blockDim.y - threadIdx.y + halfBlockDim) * dCenterCdf[blockId] 
-//                             + (threadIdx.y - halfBlockDim) * dCenterCdf[blockId + gridDim.x]) / blockDim.y;
-//                 }
-//                 else
-//                 {
-//                     L[i] = ((halfBlockDim - threadIdx.y) * dCenterCdf[blockId - gridDim.x] 
-//                             +(blockDim.y + threadIdx.y - halfBlockDim) * dCenterCdf[blockId]) / blockDim.y;
-//                 }
-//             }
-//             else
-//             {
-//                 float temp = 0;
-
-//                 if (threadIdx.x > halfBlockDim)
-//                 {
-//                     if (threadIdx.y > halfBlockDim)
-//                     {   
-//                         temp = (blockDim.x - threadIdx.x + halfBlockDim) * (blockDim.y - threadIdx.y + halfBlockDim) * dCenterCdf[blockId] 
-//                                 + (threadIdx.x - halfBlockDim) * (blockDim.y - threadIdx.y + halfBlockDim) * dCenterCdf[blockId + 1]
-//                                 + (blockDim.x - threadIdx.x + halfBlockDim) * (threadIdx.y - halfBlockDim) * dCenterCdf[blockId + gridDim.x]
-//                                 + (threadIdx.x - halfBlockDim) * (threadIdx.y - halfBlockDim) * dCenterCdf[blockId + 1 + gridDim.x];
-                                
-//                     }
-//                     else
-//                     {
-//                         temp = (blockDim.x - threadIdx.x + halfBlockDim) * (halfBlockDim - threadIdx.y) * dCenterCdf[blockId - gridDim.x] 
-//                                 + (threadIdx.x - halfBlockDim) * (halfBlockDim - threadIdx.y) * dCenterCdf[blockId + 1 - gridDim.x]
-//                                 + (blockDim.x - threadIdx.x + halfBlockDim) * (blockDim.y + threadIdx.y - halfBlockDim) * dCenterCdf[blockId]
-//                                 + (threadIdx.x - halfBlockDim) * (blockDim.y + threadIdx.y - halfBlockDim) * dCenterCdf[blockId + 1];
-//                     }
-                    
-//                 }
-//                 else
-//                 {
-//                     if (threadIdx.y > halfBlockDim)
-//                     {   
-//                         temp = (halfBlockDim - threadIdx.x) * (blockDim.y - threadIdx.y + halfBlockDim) * dCenterCdf[blockId - 1] 
-//                                 + (blockDim.x + threadIdx.x - halfBlockDim) * (blockDim.y - threadIdx.y + halfBlockDim) * dCenterCdf[blockId]
-//                                 + (halfBlockDim - threadIdx.x) * (threadIdx.y - halfBlockDim) * dCenterCdf[blockId - 1 + gridDim.x]
-//                                 + (blockDim.x + threadIdx.x - halfBlockDim) * (threadIdx.y - halfBlockDim) * dCenterCdf[blockId + gridDim.x];                                            
-//                     }
-//                     else
-//                     {
-//                         temp = (halfBlockDim - threadIdx.x) * (halfBlockDim - threadIdx.y) * dCenterCdf[blockId - gridDim.x] 
-//                                 + (blockDim.x + threadIdx.x - halfBlockDim) * (halfBlockDim - threadIdx.y) * dCenterCdf[blockId + 1 - gridDim.x]
-//                                 + (halfBlockDim - threadIdx.x) * (blockDim.y + threadIdx.y - halfBlockDim) * dCenterCdf[blockId]
-//                                 + (blockDim.x + threadIdx.x - halfBlockDim) * (blockDim.y + threadIdx.y - halfBlockDim) * dCenterCdf[blockId + 1];
-//                     }
-//                 }
-
-//                 L[i] = temp / (blockDim.x * blockDim.y);
-//             }
-//         }
-//     }
-// }

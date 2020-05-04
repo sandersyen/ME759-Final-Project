@@ -88,7 +88,6 @@ int main(int argc, char *argv[])
             cudaEventElapsedTime(&ms, start, stop);
             cout << ms << endl;
 
-
             cudaMemcpy(rgb_image, dImg, N*channel*sizeof(unsigned char), cudaMemcpyDeviceToHost);
             cudaDeviceSynchronize();
 
