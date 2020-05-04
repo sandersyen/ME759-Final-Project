@@ -44,6 +44,13 @@ int main(int argc, char *argv[])
             float* dB;
             unsigned char* dImg;
 
+            // Time the calculation actions exception for read and write image.
+            cudaEvent_t start;
+            cudaEvent_t stop;
+            cudaEventCreate(&start);
+            cudaEventCreate(&stop);
+            cudaEventRecord(start);
+            
             cudaMallocManaged((void **) &dImg, N*channel*sizeof(unsigned char));
             cudaMallocManaged((void **) &dL, N * sizeof(float));
             cudaMallocManaged((void **) &dA, N * sizeof(float));
@@ -53,13 +60,6 @@ int main(int argc, char *argv[])
             cudaMemset(dL, 0.0, N * sizeof(float));
             cudaMemset(dA, 0.0, N * sizeof(float));
             cudaMemset(dB, 0.0, N * sizeof(float));
-
-            // Time the calculation actions exception for read and write image.
-            cudaEvent_t start;
-            cudaEvent_t stop;
-            cudaEventCreate(&start);
-            cudaEventCreate(&stop);
-            cudaEventRecord(start);
 
             transformRgbToLab<<<num_block, threads_per_block>>>(dImg, width, height, dL, dA, dB);
             cudaDeviceSynchronize();
@@ -81,6 +81,9 @@ int main(int argc, char *argv[])
             transformLabToRgb<<<num_block, threads_per_block>>>(dImg, width, height, dL, dA, dB);
             cudaDeviceSynchronize();
 
+            // cudaMemcpy(rgb_image, dImg, N*channel*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+            // cudaDeviceSynchronize();
+
             cudaEventRecord(stop);
             cudaEventSynchronize(stop);
             // Get the elapsed time in milliseconds
@@ -88,10 +91,7 @@ int main(int argc, char *argv[])
             cudaEventElapsedTime(&ms, start, stop);
             cout << ms << endl;
 
-            cudaMemcpy(rgb_image, dImg, N*channel*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-            cudaDeviceSynchronize();
-
-            stbi_write_png(outputImg.c_str(), width, height, channel, rgb_image, width*3);
+            stbi_write_png(outputImg.c_str(), width, height, channel, dImg, width*3);
 
             stbi_image_free(rgb_image);
 
