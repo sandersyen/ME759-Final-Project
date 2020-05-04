@@ -233,7 +233,6 @@ __global__ void pixelInterpolate(float* L, int width, int height, float* dCdf)
         {
             topLeft[threadI] = dCdf[blockCdf + threadI];
         }
-        __syncthreads();
 
         if (blockIdx.x != gridDim.x - 1 && blockIdx.y != gridDim.y - 1)
         {
@@ -280,6 +279,7 @@ __global__ void pixelInterpolate(float* L, int width, int height, float* dCdf)
         }
         else
         {
+            __syncthreads();
             temp = topLeft[index];
             L[i] = temp * 100;
         }
