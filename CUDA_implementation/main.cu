@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <string>
-#include "clahe2.cuh"
+#include "clahe.cuh"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"

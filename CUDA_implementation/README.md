@@ -1,0 +1,1 @@
+the way to run this program should be ./program_name [input_img_name] [output_img_name] [grid_size] [threshold]

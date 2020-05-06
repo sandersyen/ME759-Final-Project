@@ -4,17 +4,14 @@
 
 #define BIN_SIZE 101
 
-__global__ void clahe(float* L, int width, int height, int threshold)
+__global__ void clahe(float* L, int width, int height, int threshold, float* dCdf)
 {
     __shared__ int bins[BIN_SIZE];
-    __shared__ float cdf[BIN_SIZE];
 
     computeHistogram(L, width, height, bins);
     clipHistogram(bins, threshold);
-    generateCdf(bins, cdf);
-    mappingCdf(L, width, height, cdf);
-
-} // <<<64, 1024>>>
+    generateCdf(bins, dCdf);
+}
 
 __global__ void transformRgbToLab(unsigned char* pixels, int width, int height, float* L, float* A, float* B){
     // pixels: length = width * height * 3
@@ -50,7 +47,6 @@ __global__ void transformRgbToLab(unsigned char* pixels, int width, int height, 
         B[i] = 200.0 * (y - z);
     }
 }
-// https://github.com/berendeanicolae/ColorSpace/blob/master/src/Conversion.cpp
 
 __global__ void transformLabToRgb(unsigned char* pixels, int width, int height, float* L, float* A, float* B)
 {
@@ -138,64 +134,98 @@ __device__ void clipHistogram(int* bins, int threshold)
 }
 
 // called by kernel<<<dimGrid, dimBlock>>>()
-__device__ void generateCdf(int* bins, float* cdf)
+__device__ void generateCdf(int* bins, float* dCdf)
 {
     int i = threadIdx.x + threadIdx.y * blockDim.x;
 
     // small array so here use sequential scan
-    if(i == 0){
+    if (i == 0)
+    {
         for(int j = 1; j < BIN_SIZE; j++)
             bins[j]= bins[j]+bins[j-1];
     }
     __syncthreads();
     
-    if( i < BIN_SIZE )
-        cdf[i] = (float)bins[i]/(float)bins[BIN_SIZE-1];
-    __syncthreads();
-}
-
-__device__ void mappingCdf(float* L, int width, int height, float* cdf)
-{
-    int row = threadIdx.y + blockIdx.y * blockDim.y;
-    int col = threadIdx.x + blockIdx.x * blockDim.x;
-    int i = row * width + col;
-    int max = width * height;
-
-    // average neighbor -> mapping
-    if(i < max){
-
-        int index = (int)L[i];
-        int counter = 1;
-        if ((threadIdx.y) != 0)
-        {
-            index += (int)L[i - width];
-            ++counter;
-        }
-
-        if ((threadIdx.y + 1) < block_size && i + width < max)
-        {
-            index += (int)L[i + width];
-            ++counter;
-        }
-
-        if ((threadIdx.x) != 0)
-        {
-            index += (int)L[i - 1];
-            ++counter;
-        }
-
-        if ((threadIdx.x + 1) < block_size && i + 1 < max)
-        {
-            index += (int)L[i + 1];
-            ++counter;
-        }
-        
-        // int index = (int)L[i];
-        float temp = cdf[index / counter] * 100;
-        __syncthreads();
-
-        L[i] = temp;
+    if ( i < BIN_SIZE )
+    {
+        dCdf[(blockIdx.x + blockIdx.y * gridDim.x) * BIN_SIZE + i] = (float)bins[i]/(float)bins[BIN_SIZE - 1];
     }
     __syncthreads();
 }
 
+__global__ void pixelInterpolate(float* L, int width, int height, float* dCdf)
+{
+    __shared__ float topLeft[BIN_SIZE];
+    __shared__ float topRight[BIN_SIZE];
+    __shared__ float bottomLeft[BIN_SIZE];
+    __shared__ float bottomRight[BIN_SIZE];
+
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    int col = threadIdx.x + blockIdx.x * blockDim.x;
+    int i = row * width + col;
+    int blockId = blockIdx.x + blockIdx.y * gridDim.x;
+    int blockCdf = blockId * BIN_SIZE;
+    int threadI = threadIdx.x + threadIdx.y * blockDim.x;
+
+    if (i < width * height)
+    {   
+        int index = (int)L[i];
+        float temp = dCdf[index + blockCdf] * 100;
+
+        if (threadI < BIN_SIZE)
+        {
+            topLeft[threadI] = dCdf[blockCdf + threadI];
+        }
+
+        if (blockIdx.x != gridDim.x - 1 && blockIdx.y != gridDim.y - 1)
+        {
+            if (threadI < BIN_SIZE)
+            {
+                topRight[threadI] = dCdf[blockCdf + BIN_SIZE + threadI];
+                bottomLeft[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + threadI];
+                bottomRight[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + BIN_SIZE + threadI];
+            }
+            __syncthreads();
+            
+            temp = (blockDim.x - threadIdx.x) * (blockDim.y - threadIdx.y) * topLeft[index]
+                    + threadIdx.x * (blockDim.y - threadIdx.y) * topRight[index]
+                    + (blockDim.x - threadIdx.x) * threadIdx.y * bottomLeft[index]
+                    + threadIdx.x * threadIdx.y * bottomRight[index];
+
+            L[i] = (temp / (blockDim.x * blockDim.y)) * 100;
+        }
+        else if (blockIdx.x == gridDim.x - 1 && blockIdx.y != gridDim.y - 1)
+        {
+            if (threadI < BIN_SIZE)
+            {
+                bottomLeft[threadI] = dCdf[blockCdf + gridDim.x * BIN_SIZE + threadI];
+            }
+            __syncthreads();
+
+            temp = (blockDim.y - threadIdx.y) * topLeft[index]
+                    + threadIdx.y * bottomLeft[index];
+            
+            L[i] = (temp / blockDim.y) * 100;
+        }
+        else if (blockIdx.x != gridDim.x - 1 && blockIdx.y == gridDim.y - 1)
+        {
+            if (threadI < BIN_SIZE)
+            {
+                topRight[threadI] = dCdf[blockCdf + BIN_SIZE + threadI];
+            }
+            __syncthreads();
+
+            temp = (blockDim.x - threadIdx.x) * topLeft[index]
+                    + threadIdx.x * topRight[index];
+
+            L[i] = (temp / blockDim.x) * 100;
+        }
+        else
+        {
+            __syncthreads();
+            temp = topLeft[index];
+            L[i] = temp * 100;
+        }
+    }
+    __syncthreads();
+}

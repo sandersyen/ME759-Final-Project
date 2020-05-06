@@ -1,5 +1,5 @@
-#ifndef CLAHE2_CUH
-#define CLAHE2_CUH
+#ifndef CLAHE_CUH
+#define CLAHE_CUH
 
 __global__ void clahe(float* L, int width, int height, int threshold, float* dCdf);
 
@@ -13,7 +13,6 @@ __device__ void computeHistogram(float* L, int width, int height, int* bins);
 
 __device__ void clipHistogram(int* bins, int threshold);
 
-// __device__ void generateCdf(int* bins, float* cdf, float* dCdf);
 __device__ void generateCdf(int* bins, float* dCdf);
 
 __device__ void mappingCdf(float* L, int width, int height, float* cdf, float* dCdf); // average neighbor -> mapping
